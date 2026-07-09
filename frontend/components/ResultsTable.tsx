@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CRMRecord, SkippedRecord } from "@/types/crm";
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 interface ResultsTableProps {
   success: CRMRecord[];
@@ -25,8 +25,8 @@ const CRM_FIELDS: { key: keyof CRMRecord; label: string }[] = [
   { key: "data_source", label: "Source" },
   { key: "created_at", label: "Created At" },
   { key: "crm_note", label: "Notes" },
-  { key: "description", label: "Description" },
   { key: "possession_time", label: "Possession" },
+  { key: "description", label: "Description" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -36,12 +36,27 @@ const STATUS_COLORS: Record<string, string> = {
   SALE_DONE: "bg-blue-500/20 text-blue-400 border-blue-500/30",
 };
 
-export default function ResultsTable({
-  success,
-  skipped,
-  totalImported,
-  totalSkipped,
-}: ResultsTableProps) {
+function exportToCSV(records: CRMRecord[]) {
+  const headers = CRM_FIELDS.map(f => f.key);
+  const rows = records.map(r =>
+    headers.map(h => {
+      const val = String(r[h] ?? "");
+      return val.includes(",") || val.includes('"') || val.includes("\n")
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    }).join(",")
+  );
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `groweasy_crm_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function ResultsTable({ success, skipped, totalImported, totalSkipped }: ResultsTableProps) {
   const [activeTab, setActiveTab] = useState<"success" | "skipped">("success");
 
   return (
@@ -64,52 +79,49 @@ export default function ResultsTable({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-white/5 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveTab("success")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-            activeTab === "success"
-              ? "bg-violet-600 text-white shadow"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          Imported ({totalImported})
-        </button>
-        {totalSkipped > 0 && (
+      {/* Tabs + Export */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
           <button
-            onClick={() => setActiveTab("skipped")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              activeTab === "skipped"
-                ? "bg-red-600 text-white shadow"
-                : "text-gray-400 hover:text-white"
-            }`}
+            onClick={() => setActiveTab("success")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === "success" ? "bg-violet-600 text-white shadow" : "text-gray-400 hover:text-white"}`}
           >
-            Skipped ({totalSkipped})
+            Imported ({totalImported})
+          </button>
+          {totalSkipped > 0 && (
+            <button
+              onClick={() => setActiveTab("skipped")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === "skipped" ? "bg-red-600 text-white shadow" : "text-gray-400 hover:text-white"}`}
+            >
+              Skipped ({totalSkipped})
+            </button>
+          )}
+        </div>
+
+        {totalImported > 0 && (
+          <button
+            onClick={() => exportToCSV(success)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm text-gray-300 hover:text-white transition-all"
+          >
+            <ArrowDownTrayIcon className="w-4 h-4" />
+            Export CSV
           </button>
         )}
       </div>
 
-      {/* Success Table */}
+      {/* Imported Table */}
       {activeTab === "success" && (
         <div className="rounded-xl border border-white/10 overflow-hidden">
           {success.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              No records were successfully imported.
-            </div>
+            <div className="text-center py-12 text-gray-500">No records were successfully imported.</div>
           ) : (
             <div className="overflow-auto max-h-[500px]">
               <table className="w-full text-sm border-collapse min-w-max">
                 <thead>
                   <tr>
-                    <th className="sticky top-0 left-0 z-20 bg-[#1a1a2e] border-b border-r border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      #
-                    </th>
-                    {CRM_FIELDS.map((f) => (
-                      <th
-                        key={f.key}
-                        className="sticky top-0 z-10 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider whitespace-nowrap"
-                      >
+                    <th className="sticky top-0 left-0 z-20 bg-[#1a1a2e] border-b border-r border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">#</th>
+                    {CRM_FIELDS.map(f => (
+                      <th key={f.key} className="sticky top-0 z-10 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider whitespace-nowrap">
                         {f.label}
                       </th>
                     ))}
@@ -117,32 +129,16 @@ export default function ResultsTable({
                 </thead>
                 <tbody>
                   {success.map((record, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
-                    >
-                      <td className="sticky left-0 bg-[#0f0f1a] hover:bg-[#161628] border-r border-white/10 px-4 py-2.5 text-gray-600 text-xs font-mono">
-                        {idx + 1}
-                      </td>
-                      {CRM_FIELDS.map((f) => (
-                        <td
-                          key={f.key}
-                          className="px-4 py-2.5 whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis"
-                          title={String(record[f.key] ?? "")}
-                        >
+                    <tr key={idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                      <td className="sticky left-0 bg-[#0f0f1a] hover:bg-[#161628] border-r border-white/10 px-4 py-2.5 text-gray-600 text-xs font-mono">{idx + 1}</td>
+                      {CRM_FIELDS.map(f => (
+                        <td key={f.key} className="px-4 py-2.5 whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis" title={String(record[f.key] ?? "")}>
                           {f.key === "crm_status" && record.crm_status ? (
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
-                                STATUS_COLORS[record.crm_status] ||
-                                "bg-gray-500/20 text-gray-400"
-                              }`}
-                            >
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[record.crm_status] || "bg-gray-500/20 text-gray-400"}`}>
                               {record.crm_status}
                             </span>
                           ) : record[f.key] ? (
-                            <span className="text-gray-300">
-                              {String(record[f.key])}
-                            </span>
+                            <span className="text-gray-300">{String(record[f.key])}</span>
                           ) : (
                             <span className="text-gray-700 italic text-xs">—</span>
                           )}
@@ -161,55 +157,31 @@ export default function ResultsTable({
       {activeTab === "skipped" && (
         <div className="rounded-xl border border-white/10 overflow-hidden">
           {skipped.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              No records were skipped.
-            </div>
+            <div className="text-center py-12 text-gray-500">No records were skipped.</div>
           ) : (
             <div className="overflow-auto max-h-[500px]">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr>
-                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Row
-                    </th>
-                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Reason
-                    </th>
-                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Original Data
-                    </th>
+                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-16">Row</th>
+                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason</th>
+                    <th className="sticky top-0 bg-[#1a1a2e] border-b border-white/10 px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Original Data</th>
                   </tr>
                 </thead>
                 <tbody>
                   {skipped.map((record, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
-                    >
-                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">
-                        {record.rowIndex + 1}
-                      </td>
+                    <tr key={idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">{record.rowIndex + 1}</td>
                       <td className="px-4 py-3">
-                        <span className="text-red-400 text-xs px-2 py-1 bg-red-500/10 rounded-md">
-                          {record.reason}
-                        </span>
+                        <span className="text-red-400 text-xs px-2 py-1 bg-red-500/10 rounded-md">{record.reason}</span>
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs max-w-[400px]">
                         <div className="flex flex-wrap gap-1">
-                          {Object.entries(record.originalData)
-                            .filter(([, v]) => v)
-                            .slice(0, 5)
-                            .map(([k, v]) => (
-                              <span
-                                key={k}
-                                className="px-1.5 py-0.5 bg-white/5 rounded text-gray-500"
-                                title={`${k}: ${v}`}
-                              >
-                                <span className="text-gray-600">{k}:</span>{" "}
-                                {String(v).substring(0, 30)}
-                                {String(v).length > 30 ? "…" : ""}
-                              </span>
-                            ))}
+                          {Object.entries(record.originalData).filter(([, v]) => v).slice(0, 5).map(([k, v]) => (
+                            <span key={k} className="px-1.5 py-0.5 bg-white/5 rounded text-gray-500" title={`${k}: ${v}`}>
+                              <span className="text-gray-600">{k}:</span> {String(v).substring(0, 30)}{String(v).length > 30 ? "…" : ""}
+                            </span>
+                          ))}
                         </div>
                       </td>
                     </tr>

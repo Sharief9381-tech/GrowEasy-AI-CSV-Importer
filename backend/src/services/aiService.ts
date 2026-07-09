@@ -1,7 +1,7 @@
 import Groq from "groq-sdk";
 import { CRMRecord, CRMStatus, DataSource, SkippedRecord, BatchResult } from "../types/crm";
 
-const BATCH_SIZE = 10;  // smaller batches = less tokens per request
+const BATCH_SIZE = 15;
 const MAX_RETRIES = 3;
 
 const ALLOWED_CRM_STATUSES: CRMStatus[] = [
@@ -26,40 +26,61 @@ function getClient(): Groq {
 }
 
 function buildPrompt(headers: string[], rows: Record<string, string>[]): string {
-  return `Extract CRM lead data from these CSV rows. Map columns intelligently.
+  return `You are a CRM data extraction expert. Extract GrowEasy CRM fields from these CSV rows.
 
-CRM fields: created_at, name, email, country_code, mobile_without_country_code, company, city, state, country, lead_owner, crm_status, crm_note, data_source, possession_time, description
+CRM FIELDS: created_at, name, email, country_code, mobile_without_country_code, company, city, state, country, lead_owner, crm_status, crm_note, data_source, possession_time, description
 
-Rules:
-- crm_status: GOOD_LEAD_FOLLOW_UP | DID_NOT_CONNECT | BAD_LEAD | SALE_DONE (map from status/stage columns)
-- data_source: leads_on_demand | meridian_tower | eden_park | varah_swamy | sarjapur_plots (or omit)
-- mobile_without_country_code: digits only
-- SKIP if no email AND no mobile
-- Multiple emails/phones: first=primary, rest→crm_note
-- created_at: valid JS date string
-- Combine first+last name into name
+STRICT RULES:
+1. crm_status MUST be one of: GOOD_LEAD_FOLLOW_UP | DID_NOT_CONNECT | BAD_LEAD | SALE_DONE
+   - Hot/Warm/Interested/Follow-up/Callback → GOOD_LEAD_FOLLOW_UP
+   - Cold/No answer/DNC/Busy/Not picking → DID_NOT_CONNECT  
+   - Not interested/Junk/Wrong number/Invalid → BAD_LEAD
+   - Closed/Won/Deal done/Sale done/Converted/Onboarded → SALE_DONE
+2. data_source MUST be one of: leads_on_demand | meridian_tower | eden_park | varah_swamy | sarjapur_plots (omit if none match)
+3. SKIP row if NO email AND NO mobile — set action:"skip"
+4. mobile_without_country_code: digits only, no +, no spaces, no dashes
+5. Multiple emails → first to email, rest append to crm_note
+6. Multiple phones → first to mobile, rest append to crm_note
+7. created_at: ISO format parseable by new Date()
+8. Merge first_name + last_name into name
+9. Map intelligently: "Phone"/"Cell"/"WhatsApp"→mobile, "E-mail"/"Email Address"→email, "Prospect"/"Contact"→name, "Stage"/"Status"→crm_status, "Remarks"/"Comments"→crm_note, "Owner"/"Assigned"→lead_owner
 
-Headers: ${JSON.stringify(headers)}
-Rows: ${JSON.stringify(rows)}
+HEADERS: ${JSON.stringify(headers)}
+ROWS (${rows.length} records, 0-indexed): ${JSON.stringify(rows)}
 
-Return JSON only: {"results":[{"rowIndex":0,"action":"import","record":{...}},{"rowIndex":1,"action":"skip","reason":"..."}]}`;
+OUTPUT — valid JSON only, no markdown:
+{"results":[{"rowIndex":0,"action":"import","record":{"name":"...","email":"...","mobile_without_country_code":"...","country_code":"...","company":"...","city":"...","state":"...","country":"...","lead_owner":"...","crm_status":"GOOD_LEAD_FOLLOW_UP","crm_note":"...","data_source":"...","created_at":"...","possession_time":"...","description":"..."}},{"rowIndex":1,"action":"skip","reason":"No email or mobile"}]}`;
 }
 
 async function callGroqWithRetry(prompt: string, retries: number = 0): Promise<string> {
   try {
     const response = await getClient().chat.completions.create({
-      model: "llama-3.1-8b-instant",  // 8B model — 10x cheaper on tokens
+      model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "system", content: "You are a CRM data extraction assistant. Always respond with valid JSON only." },
+        {
+          role: "system",
+          content: "You are a CRM data extraction assistant. Always respond with valid JSON only. Never include markdown or explanations.",
+        },
         { role: "user", content: prompt },
       ],
-      temperature: 0.1,
+      temperature: 0,
       response_format: { type: "json_object" },
+      max_tokens: 4096,
     });
     return response.choices[0]?.message?.content || "{}";
   } catch (error: unknown) {
-    if (retries < MAX_RETRIES) {
-      await new Promise((r) => setTimeout(r, Math.pow(2, retries) * 1000));
+    const msg = error instanceof Error ? error.message : "";
+    // On rate limit, wait the suggested retry time
+    if (msg.includes("429") || msg.includes("rate_limit")) {
+      const retryMatch = msg.match(/try again in (\d+)m/);
+      const waitMs = retryMatch ? parseInt(retryMatch[1]) * 60 * 1000 + 5000 : 60000;
+      if (retries < MAX_RETRIES) {
+        console.log(`[Rate limit] Waiting ${Math.round(waitMs/1000)}s before retry ${retries + 1}...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        return callGroqWithRetry(prompt, retries + 1);
+      }
+    } else if (retries < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, Math.pow(2, retries) * 2000));
       return callGroqWithRetry(prompt, retries + 1);
     }
     throw error;
@@ -68,7 +89,10 @@ async function callGroqWithRetry(prompt: string, retries: number = 0): Promise<s
 
 function sanitizeRecord(record: Partial<CRMRecord>): CRMRecord {
   const s: CRMRecord = {};
-  if (record.created_at && !isNaN(new Date(record.created_at).getTime())) s.created_at = record.created_at;
+  if (record.created_at) {
+    const d = new Date(record.created_at);
+    if (!isNaN(d.getTime())) s.created_at = record.created_at;
+  }
   if (record.name) s.name = String(record.name).trim();
   if (record.email) s.email = String(record.email).trim().toLowerCase();
   if (record.country_code) s.country_code = String(record.country_code).trim();
@@ -81,46 +105,77 @@ function sanitizeRecord(record: Partial<CRMRecord>): CRMRecord {
   if (record.state) s.state = String(record.state).trim();
   if (record.country) s.country = String(record.country).trim();
   if (record.lead_owner) s.lead_owner = String(record.lead_owner).trim();
-  if (record.crm_status && ALLOWED_CRM_STATUSES.includes(record.crm_status)) s.crm_status = record.crm_status;
+  if (record.crm_status && ALLOWED_CRM_STATUSES.includes(record.crm_status)) {
+    s.crm_status = record.crm_status;
+  }
   if (record.crm_note) s.crm_note = String(record.crm_note).trim();
-  if (record.data_source && ALLOWED_DATA_SOURCES.includes(record.data_source as DataSource)) s.data_source = record.data_source as DataSource;
+  if (record.data_source && ALLOWED_DATA_SOURCES.includes(record.data_source as DataSource)) {
+    s.data_source = record.data_source as DataSource;
+  }
   if (record.possession_time) s.possession_time = String(record.possession_time).trim();
   if (record.description) s.description = String(record.description).trim();
   return s;
 }
 
-export async function processCSVWithAI(headers: string[], rows: Record<string, string>[]): Promise<BatchResult> {
+export async function processCSVWithAI(
+  headers: string[],
+  rows: Record<string, string>[],
+  onProgress?: (processed: number, total: number) => void
+): Promise<BatchResult> {
   const allRecords: CRMRecord[] = [];
   const allSkipped: SkippedRecord[] = [];
+  const total = rows.length;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batchRows = rows.slice(i, i + BATCH_SIZE);
+
     try {
       const raw = await callGroqWithRetry(buildPrompt(headers, batchRows));
-      let parsed: { results: Array<{ rowIndex: number; action: "import" | "skip"; record?: Partial<CRMRecord>; reason?: string }> };
-      try { parsed = JSON.parse(raw); }
-      catch {
-        batchRows.forEach((d, idx) => allSkipped.push({ rowIndex: i + idx, reason: "AI returned invalid JSON", originalData: d }));
+
+      let parsed: {
+        results: Array<{
+          rowIndex: number;
+          action: "import" | "skip";
+          record?: Partial<CRMRecord>;
+          reason?: string;
+        }>;
+      };
+
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        batchRows.forEach((d, idx) => {
+          allSkipped.push({ rowIndex: i + idx, reason: "AI returned invalid JSON", originalData: d });
+        });
         continue;
       }
+
       for (const item of parsed.results) {
-        const idx = i + item.rowIndex;
+        const globalIdx = i + item.rowIndex;
         const orig = batchRows[item.rowIndex] || {};
+
         if (item.action === "import" && item.record) {
           const rec = sanitizeRecord(item.record);
           if (!rec.email && !rec.mobile_without_country_code) {
-            allSkipped.push({ rowIndex: idx, reason: "No valid email or mobile after processing", originalData: orig });
+            allSkipped.push({ rowIndex: globalIdx, reason: "No valid email or mobile after processing", originalData: orig });
           } else {
             allRecords.push(rec);
           }
         } else {
-          allSkipped.push({ rowIndex: idx, reason: item.reason || "Skipped by AI", originalData: orig });
+          allSkipped.push({ rowIndex: globalIdx, reason: item.reason || "Skipped by AI", originalData: orig });
         }
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : "Unknown error";
-      console.error(`[AI Error] Batch ${i}-${i+batchRows.length}:`, errMsg);
-      batchRows.forEach((d, idx) => allSkipped.push({ rowIndex: i + idx, reason: `Processing error: ${errMsg}`, originalData: d }));
+      console.error(`[AI Error] Batch ${i}-${i + batchRows.length}:`, errMsg.slice(0, 200));
+      batchRows.forEach((d, idx) => {
+        allSkipped.push({ rowIndex: i + idx, reason: `Processing error: ${errMsg.slice(0, 100)}`, originalData: d });
+      });
+    }
+
+    // Report progress
+    if (onProgress) {
+      onProgress(Math.min(i + BATCH_SIZE, total), total);
     }
   }
 
