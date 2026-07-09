@@ -1,7 +1,7 @@
 import Groq from "groq-sdk";
 import { CRMRecord, CRMStatus, DataSource, SkippedRecord, BatchResult } from "../types/crm";
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 10;  // smaller batches = less tokens per request
 const MAX_RETRIES = 3;
 
 const ALLOWED_CRM_STATUSES: CRMStatus[] = [
@@ -26,50 +26,29 @@ function getClient(): Groq {
 }
 
 function buildPrompt(headers: string[], rows: Record<string, string>[]): string {
-  return `You are a CRM data extraction expert. Map CSV data with arbitrary column names into GrowEasy CRM format.
+  return `Extract CRM lead data from these CSV rows. Map columns intelligently.
 
-## CRM Fields to Extract
-- created_at: Lead creation date (parseable by JavaScript new Date())
-- name: Lead full name
-- email: Primary email address
-- country_code: Country dialing code (e.g. +91, +1)
-- mobile_without_country_code: Mobile digits only, no spaces/dashes/country code
-- company: Company name
-- city: City
-- state: State or province
-- country: Country
-- lead_owner: Lead owner email or name
-- crm_status: EXACTLY one of: GOOD_LEAD_FOLLOW_UP, DID_NOT_CONNECT, BAD_LEAD, SALE_DONE
-- crm_note: Remarks, notes, extra emails, extra phones, any overflow info
-- data_source: EXACTLY one of: leads_on_demand, meridian_tower, eden_park, varah_swamy, sarjapur_plots — or omit if none match
-- possession_time: Property possession time
-- description: Additional description
+CRM fields: created_at, name, email, country_code, mobile_without_country_code, company, city, state, country, lead_owner, crm_status, crm_note, data_source, possession_time, description
 
-## Mapping Rules
-1. crm_status: "Hot/Interested/Warm/Follow Up"→GOOD_LEAD_FOLLOW_UP | "Cold/No Answer/DNC"→DID_NOT_CONNECT | "Not Interested/Junk/Bad"→BAD_LEAD | "Closed/Won/Deal Done/Converted"→SALE_DONE | ambiguous→omit
-2. data_source: match ad/campaign names to allowed values if confident, else omit
-3. SKIP records with no email AND no mobile
-4. Multiple emails → first primary, rest to crm_note
-5. Multiple phones → first primary, rest to crm_note
-6. mobile_without_country_code: digits only
-7. Combine first+last name columns into name
-8. Column mappings: Phone/Cell/Mobile/WhatsApp→mobile | Email Address/E-mail→email | Full Name/Prospect Name→name | Assigned To/Owner→lead_owner | Remarks/Comments/Notes→crm_note | Lead Stage/Status→crm_status | Entry Date/Created Time→created_at
+Rules:
+- crm_status: GOOD_LEAD_FOLLOW_UP | DID_NOT_CONNECT | BAD_LEAD | SALE_DONE (map from status/stage columns)
+- data_source: leads_on_demand | meridian_tower | eden_park | varah_swamy | sarjapur_plots (or omit)
+- mobile_without_country_code: digits only
+- SKIP if no email AND no mobile
+- Multiple emails/phones: first=primary, rest→crm_note
+- created_at: valid JS date string
+- Combine first+last name into name
 
-## CSV Headers
-${JSON.stringify(headers)}
+Headers: ${JSON.stringify(headers)}
+Rows: ${JSON.stringify(rows)}
 
-## Records (${rows.length} rows, 0-indexed)
-${JSON.stringify(rows, null, 2)}
-
-## Output
-Return ONLY valid JSON, no markdown:
-{"results":[{"rowIndex":0,"action":"import","record":{"name":"...","email":"...","mobile_without_country_code":"...","country_code":"...","company":"...","city":"...","state":"...","country":"...","lead_owner":"...","crm_status":"...","crm_note":"...","data_source":"...","created_at":"...","possession_time":"...","description":"..."}},{"rowIndex":1,"action":"skip","reason":"No email or mobile number found"}]}`;
+Return JSON only: {"results":[{"rowIndex":0,"action":"import","record":{...}},{"rowIndex":1,"action":"skip","reason":"..."}]}`;
 }
 
 async function callGroqWithRetry(prompt: string, retries: number = 0): Promise<string> {
   try {
     const response = await getClient().chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.1-8b-instant",  // 8B model — 10x cheaper on tokens
       messages: [
         { role: "system", content: "You are a CRM data extraction assistant. Always respond with valid JSON only." },
         { role: "user", content: prompt },
