@@ -139,8 +139,9 @@ export async function processCSVWithAI(headers: string[], rows: Record<string, s
         }
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      batchRows.forEach((d, idx) => allSkipped.push({ rowIndex: i + idx, reason: `Processing error: ${msg}`, originalData: d }));
+      const errMsg = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[AI Error] Batch ${i}-${i+batchRows.length}:`, errMsg);
+      batchRows.forEach((d, idx) => allSkipped.push({ rowIndex: i + idx, reason: `Processing error: ${errMsg}`, originalData: d }));
     }
   }
 

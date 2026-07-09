@@ -1,13 +1,16 @@
 import { ParsedResult, PreviewData } from "@/types/crm";
 
-// Use relative URL — proxied through Next.js to avoid CORS
-const API_BASE = "/api";
+// Direct call to backend — CORS is open
+const API_BASE =
+  typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000")
+    : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000");
 
 export async function uploadForPreview(file: File): Promise<PreviewData> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/import/preview`, {
+  const response = await fetch(`${API_BASE}/api/import/preview`, {
     method: "POST",
     body: formData,
   });
@@ -24,7 +27,7 @@ export async function processCSV(file: File): Promise<ParsedResult> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/import/process`, {
+  const response = await fetch(`${API_BASE}/api/import/process`, {
     method: "POST",
     body: formData,
   });
