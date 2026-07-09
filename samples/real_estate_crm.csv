@@ -1,0 +1,7 @@
+Lead ID,Prospect Name,Primary Email,Alt Email,Mobile,WhatsApp,Property Interest,Budget,Possession Required,Source,Assigned To,Remarks,Lead Stage,Entry Date
+1001,Arjun Mehta,arjun.mehta@gmail.com,arjun@work.com,9876123456,9876123456,3BHK Apartment,80 Lakhs,Immediate,sarjapur_plots,sales@groweasy.ai,"Wants to schedule a site visit, very interested",Hot Lead,2026-05-15
+1002,Divya Krishnan,divya.k@email.com,,8765432109,,2BHK Flat,50 Lakhs,6 months,meridian_tower,sales@groweasy.ai,Called twice but did not connect,Cold,2026-05-16
+1003,Manoj Tiwari,manoj.t@company.net,manoj.personal@gmail.com,7654321098,9988776655,Villa,1.5 Crore,12 months,eden_park,agent@groweasy.ai,"Interested in gated community, follow up next week",Warm,2026-05-17
+1004,Kavita Rao,kavita.rao@business.in,,6543210987,,Commercial Space,2 Crore,Q3 2026,varah_swamy,manager@groweasy.ai,Site visit scheduled for next Saturday,Hot,2026-05-18
+1005,,,5432109876,,,,,,leads_on_demand,,,No contact info,2026-05-19
+1006,Prakash Iyer,prakash.iyer@iyer.co,,9871234560,,Plot,40 Lakhs,Flexible,sarjapur_plots,sales@groweasy.ai,Deal closed and agreement signed,Closed Won,2026-05-20
