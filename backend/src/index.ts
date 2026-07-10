@@ -50,6 +50,6 @@ app.use(
 app.listen(PORT, () => {
   console.log(`🚀 GrowEasy CSV Importer API running on port ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/import/health`);
-});
+}).setTimeout(0); // no timeout — wait as long as AI needs
 
 export default app;

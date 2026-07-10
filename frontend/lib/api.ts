@@ -31,30 +31,18 @@ export async function processCSV(
     return processCSVWithStream(formData, onProgress);
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300000); // 5 min
+  // No timeout — wait as long as it takes
+  const response = await fetch(`${API_BASE}/api/import/process`, {
+    method: "POST",
+    body: formData,
+  });
 
-  try {
-    const response = await fetch(`${API_BASE}/api/import/process`, {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: "Processing failed" }));
-      throw new Error(err.error || "Failed to process file");
-    }
-
-    return response.json();
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Request timed out. The file may be too large.");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: "Processing failed" }));
+    throw new Error(err.error || "Failed to process file");
   }
+
+  return response.json();
 }
 
 async function processCSVWithStream(
@@ -62,10 +50,9 @@ async function processCSVWithStream(
   onProgress: (processed: number, total: number, percent: number) => void
 ): Promise<ParsedResult> {
   return new Promise((resolve, reject) => {
-    // Use XMLHttpRequest for SSE with POST body
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/api/import/process-stream`);
-    xhr.timeout = 300000;
+    xhr.timeout = 0; // no timeout
 
     let buffer = "";
 
