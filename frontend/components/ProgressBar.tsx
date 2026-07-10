@@ -17,7 +17,7 @@ export default function ProgressBar({ message }: ProgressBarProps) {
         <div className="h-full bg-gradient-to-r from-violet-500 via-purple-500 to-pink-500 rounded-full animate-progress-indeterminate" />
       </div>
       <p className="text-xs text-gray-600">
-        AI is intelligently mapping your CSV fields to CRM format — powered by Groq (Llama 3.3 70B).
+        AI is intelligently mapping your CSV fields to CRM format — powered by Mistral AI.
       </p>
     </div>
   );

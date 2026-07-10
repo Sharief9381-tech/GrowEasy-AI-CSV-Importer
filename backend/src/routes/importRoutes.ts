@@ -22,7 +22,7 @@ const upload = multer({
   },
 });
 
-/** POST /api/import/preview — parse CSV, return preview (no AI) */
+/** POST /api/import/preview */
 router.post("/preview", upload.single("file"), async (req: Request, res: Response) => {
   try {
     if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
@@ -38,46 +38,39 @@ router.post("/preview", upload.single("file"), async (req: Request, res: Respons
   }
 });
 
-/** POST /api/import/process — AI extraction, returns JSON */
+/** POST /api/import/process */
 router.post("/process", upload.single("file"), async (req: Request, res: Response) => {
   try {
     if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
-    if (!process.env.GROQ_API_KEY) {
-      res.status(500).json({ error: "AI service not configured. Please set GROQ_API_KEY." });
+    if (!process.env.MISTRAL_API_KEY) {
+      res.status(500).json({ error: "AI service not configured. Please set MISTRAL_API_KEY." });
       return;
     }
-
     const parsed = parseCSVBuffer(req.file.buffer);
     if (parsed.rows.length === 0) {
       res.json({ success: [], skipped: [], totalImported: 0, totalSkipped: 0 } as ParsedResult);
       return;
     }
-
     const batchResult = await processCSVWithAI(parsed.headers, parsed.rows);
-    const result: ParsedResult = {
+    res.json({
       success: batchResult.records,
       skipped: batchResult.skipped,
       totalImported: batchResult.records.length,
       totalSkipped: batchResult.skipped.length,
-    };
-    res.json(result);
+    } as ParsedResult);
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : "Processing failed" });
   }
 });
 
-/**
- * POST /api/import/process-stream — SSE streaming progress
- * Sends progress events then final result
- */
+/** POST /api/import/process-stream — SSE streaming */
 router.post("/process-stream", upload.single("file"), async (req: Request, res: Response) => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
-  if (!process.env.GROQ_API_KEY) {
+  if (!process.env.MISTRAL_API_KEY) {
     res.status(500).json({ error: "AI service not configured." });
     return;
   }
 
-  // Set SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -99,14 +92,12 @@ router.post("/process-stream", upload.single("file"), async (req: Request, res: 
       }
     );
 
-    const result: ParsedResult = {
+    send("complete", {
       success: batchResult.records,
       skipped: batchResult.skipped,
       totalImported: batchResult.records.length,
       totalSkipped: batchResult.skipped.length,
-    };
-
-    send("complete", result);
+    });
     res.end();
   } catch (error: unknown) {
     send("error", { message: error instanceof Error ? error.message : "Processing failed" });

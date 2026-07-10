@@ -88,7 +88,7 @@ export default function Home() {
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-600/15 border border-violet-500/20 text-violet-400 text-xs font-medium mb-4">
             <SparklesIcon className="w-3.5 h-3.5" />
-            Powered by Groq · Llama 3.3 70B
+            Powered by Mistral AI
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-white via-gray-100 to-gray-400 bg-clip-text text-transparent mb-3">
             GrowEasy CSV Importer
@@ -192,7 +192,7 @@ export default function Home() {
                   </div>
                   <h3 className="text-lg font-semibold text-white">AI is mapping your CSV</h3>
                   <p className="text-gray-400 text-sm">
-                    Llama 3.3 70B is intelligently mapping each row to GrowEasy CRM fields.
+                    Mistral AI is intelligently mapping each row to GrowEasy CRM fields.
                   </p>
                 </div>
 
@@ -228,7 +228,7 @@ export default function Home() {
                         <div className="h-full bg-gradient-to-r from-violet-500 via-purple-500 to-pink-500 rounded-full animate-progress-indeterminate" />
                       </div>
                       <p className="text-xs text-gray-600 text-center">
-                        AI is intelligently mapping your CSV fields to CRM format — powered by Groq.
+                        AI is intelligently mapping your CSV fields to CRM format — powered by Mistral AI.
                       </p>
                     </>
                   )}
@@ -257,7 +257,7 @@ export default function Home() {
         </div>
 
         <p className="text-center text-gray-600 text-xs mt-8">
-          Built for GrowEasy · Supports any CSV format · Powered by Groq (Llama 3.3 70B)
+          Built for GrowEasy · Supports any CSV format · Powered by Mistral AI
         </p>
       </div>
     </div>
