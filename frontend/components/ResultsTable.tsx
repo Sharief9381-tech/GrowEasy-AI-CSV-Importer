@@ -37,7 +37,25 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function exportToCSV(records: CRMRecord[]) {
-  const headers = CRM_FIELDS.map(f => f.key);
+  // Exact GrowEasy CRM field order as specified in the assignment
+  const headers: (keyof CRMRecord)[] = [
+    "created_at",
+    "name",
+    "email",
+    "country_code",
+    "mobile_without_country_code",
+    "company",
+    "city",
+    "state",
+    "country",
+    "lead_owner",
+    "crm_status",
+    "crm_note",
+    "data_source",
+    "possession_time",
+    "description",
+  ];
+
   const rows = records.map(r =>
     headers.map(h => {
       const val = String(r[h] ?? "");
@@ -46,6 +64,7 @@ function exportToCSV(records: CRMRecord[]) {
         : val;
     }).join(",")
   );
+
   const csv = [headers.join(","), ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
